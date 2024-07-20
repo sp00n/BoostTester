@@ -181,10 +181,55 @@ int main()
 	//Print info
 	cout << "CPU Max boost tester" << endl;
 	unsigned int memsize = ARRAY_SIZE / 256 / 1024;
-	cout << "Memory required: " << memsize << " MB" << endl;
 
 	//One time setup
 	mem = new unsigned int[ARRAY_SIZE];
+
+    //Threads per core needs to be an array, since for Intel 13th and 14th gen, it could be either a P- or an E-Core
+    //The E-Cores only have one thread, while the P-Cores have two
+    CPUInfo info = getCPUInfo();
+    int threadsPerCore = info.getThreadsPerCore();
+    int physicalCoreCount = info.physicalCoreCount;
+    int logicalCoreCount = info.logicalCoreCount;
+    bool isHyperThreadingEnabled = info.isHyperThreadingEnabled();
+    bool hasAsymmetricalCoreThreads = info.hasAsymmetricalCoreThreads();
+    int* threadsPerCoreArray = new int[physicalCoreCount];
+    int numCoresWithoutHyperThreading;
+    int numCoresWithHyperThreading;
+
+    cout << "CPU Vendor: " << info.vendor << endl;
+    cout << "Physical cores found:   " << physicalCoreCount << endl;
+    cout << "Logical cores found:    " << logicalCoreCount << endl;
+    cout << "Hyperthreading enabled: " << isHyperThreadingEnabled << endl;
+
+    //We assume that the cores with two threads are at the beginning of the index. Not mixed and not at the end
+    if (hasAsymmetricalCoreThreads) {
+        cout << "This CPU has an asymmetrical core layout" << endl;
+
+        int numTheoreticalLogicalCores = physicalCoreCount * 2;
+        numCoresWithoutHyperThreading = numTheoreticalLogicalCores - logicalCoreCount;
+        numCoresWithHyperThreading = physicalCoreCount - numCoresWithoutHyperThreading;
+
+        cout << "Cores with two threads: " << numCoresWithHyperThreading << endl;
+        cout << "Cores with one thread:  " << numCoresWithoutHyperThreading << endl;
+
+        if (numCoresWithoutHyperThreading > 0) {
+            //Again, we assume that the cores with two threads only appear in the beginning
+            for (int core = 0; core < physicalCoreCount; core++) {
+                threadsPerCoreArray[core] = (core < numCoresWithHyperThreading) ? 2 : 1;
+            }
+        }
+    }
+
+    //If it's a "normal" CPU, just use 1 or 2 threads per core
+    else {
+        for (int core = 0; core < physicalCoreCount; core++) {
+            threadsPerCoreArray[core] = (isHyperThreadingEnabled) ? 2 : 1;
+        }
+    }
+
+
+    cout << "Memory required: " << memsize << " MB" << endl;
 
 	//Populate memory array
 	cout << "Filling memory array" << endl;
@@ -215,17 +260,22 @@ int main()
 		mem[r] = temp;
 	}
 
-    CPUInfo info = getCPUInfo();
-    int threadsPerCore = info.getThreadsPerCore();
-
 	//This value has no actual meaning, but is required to avoid runTest() being optimized out by the compiler
 	unsigned long counter = 0;
 	//This condition will never be false. Tricking the compiler....
 	while (counter < 0xFFFFFFFFF) {
-		for (int i = 0; i < info.logicalCoreCount; i+=threadsPerCore) {
-            cout << "Running on core: " << (i / threadsPerCore) << endl;
-			counter = runTest(i);
-		}
+        for (int core = 0; core < physicalCoreCount; core++) {
+            //We don't run on a "core", we run on a (possibly virtual) CPU
+            int cpuValue = core * threadsPerCoreArray[core];
+            
+            //If we have reached the cores with only one thread
+            if (hasAsymmetricalCoreThreads && core > numCoresWithHyperThreading - 1) {
+                cpuValue = (numCoresWithHyperThreading * 2) - 1 + (core - (numCoresWithHyperThreading-1));
+            }
+
+            cout << "Running on core: " << core << endl;
+            counter = runTest(cpuValue);
+        }
 	}
 
 	//Have to use the return from runTest() somewhere or it gets optimized out.

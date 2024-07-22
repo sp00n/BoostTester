@@ -156,6 +156,8 @@ CPUInfo getCPUInfo()
 
 //The goal of this function is to create a "100%" load at extremely low IPC.
 //The best way I can think of to do this is by constantly stalling waiting for data from RAM.
+//Added modifications from mann1x to the code
+//https://github.com/mann1x/BoostTesterMannix/tree/master
 int runTest(int core) {
 	//Setup
 	SetThreadAffinityMask(GetCurrentThread(), (static_cast<DWORD_PTR>(1) << core));
@@ -166,11 +168,23 @@ int runTest(int core) {
 	//This process should defeat branch predictors and prefetches 
 	//and result in needing data from RAM on every loop iteration.
 	unsigned int value = mem[0];
-	for (int i = 0; i < ARRAY_SIZE; i++)
-	{
-		//Set value equal to the value stored at an array index
-		value = mem[value];
-	}
+    unsigned int qvalue = mem[0];
+
+    for (int n = 0; n < 100; n++)
+    {
+        for (int i = 0; i < ARRAY_SIZE / 8192; i++)
+        {
+            //Set value equal to the value stored at an array index
+            value = mem[value];
+        }
+        Sleep(50);
+    }
+
+    for (int i = 0; i < ARRAY_SIZE; i++)
+    {
+        //Set value equal to the value stored at an array index
+        value = mem[value];
+    }
 
 	//Return final value to prevent loop from being optimized out
 	return value;
@@ -275,6 +289,9 @@ int main()
 
             cout << "Running on core: " << core << endl;
             counter = runTest(cpuValue);
+
+            //Sleep for a bit to allow the CPU to cool down
+            Sleep(3000);
         }
 	}
 

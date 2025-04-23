@@ -3,6 +3,8 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <ctime>
+#include <chrono>
 #include <intrin.h>
 #include "windows.h"
 #include "CPUInfo.h"
@@ -190,14 +192,31 @@ int runTest(int core) {
 	return value;
 }
 
-int main()
+int main(int argc, char* argv[])
 {
-	//Print info
+    int repeatCoreNumberOfTimes = 1;
+
+
+    //Command line arguments
+    if ((argc == 2) && (_stricmp(argv[1], "/?") == 0 || _stricmp(argv[1], "/h") == 0 || _stricmp(argv[1], "/help") == 0 || _stricmp(argv[1], "--help") == 0)) {
+        cout << "You can use the --core-repeat <n> command to increase the time a core is tested" << endl;
+        cout << "For example with \"--core-repeat 3\" it will spend three times as long on each core" << endl;
+        exit(0);
+    }
+    else if ((argc == 3) && (_stricmp(argv[1], "--core-repeat") == 0)) {
+        repeatCoreNumberOfTimes = max(atoi(argv[2]), 1); // Needs to be at least 1
+        cout << "Repeating a core " << repeatCoreNumberOfTimes << " times" << endl << endl;
+    }
+
+
+    //Print info
 	cout << "CPU Max boost tester" << endl;
 	unsigned int memsize = ARRAY_SIZE / 256 / 1024;
 
+
 	//One time setup
 	mem = new unsigned int[ARRAY_SIZE];
+
 
     //Threads per core needs to be an array, since for Intel 13th and 14th gen, it could be either a P- or an E-Core
     //The E-Cores only have one thread, while the P-Cores have two
@@ -274,6 +293,8 @@ int main()
 		mem[r] = temp;
 	}
 
+    cout << endl;
+
 	//This value has no actual meaning, but is required to avoid runTest() being optimized out by the compiler
 	unsigned long counter = 0;
 	//This condition will never be false. Tricking the compiler....
@@ -287,10 +308,22 @@ int main()
                 cpuValue = (numCoresWithHyperThreading * 2) - 1 + (core - (numCoresWithHyperThreading-1));
             }
 
+            auto startTime = chrono::system_clock::now();
+
             cout << "Running on core: " << core << endl;
-            counter = runTest(cpuValue);
+            for (int i = 0; i < repeatCoreNumberOfTimes; i++) {
+                counter = runTest(cpuValue);
+
+                auto currentEndTime = chrono::system_clock::now();
+                chrono::duration<double> runTime = currentEndTime - startTime;
+                cout << "...elapsed time: " << runTime.count() << "s" << endl;
+                
+                //time_t currentEndDateTime = chrono::system_clock::to_time_t(currentEndTime);
+                //cout << "finished computation at " << ctime(&currentEndDateTime) << endl;
+            }
 
             //Sleep for a bit to allow the CPU to cool down
+            cout << "Waiting 3 seconds..." << endl;
             Sleep(3000);
         }
 	}
